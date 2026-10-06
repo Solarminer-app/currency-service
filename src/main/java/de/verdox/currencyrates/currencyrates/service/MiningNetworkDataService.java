@@ -26,7 +26,7 @@ import java.util.logging.Logger;
 @Service
 public class MiningNetworkDataService {
     private static final Logger LOGGER = Logger.getLogger(MiningNetworkDataService.class.getName());
-    private static final List<String> COINS = List.of("monero", "pearl", "ravencoin", "ethereumclassic");
+    private static final List<String> COINS = List.of("monero", "pearl", "ravencoin", "ethereumclassic", "conflux", "decred", "quantus");
 
     private final MiningNetworkSnapshotRepository repository;
     private final ObjectMapper mapper;
@@ -38,6 +38,10 @@ public class MiningNetworkDataService {
     private final URI pearlPriceUrl;
     private final URI ravencoinStatsUrl;
     private final URI ethereumClassicStatsUrl;
+    private final URI confluxStatsUrl;
+    private final URI decredStatsUrl;
+    private final URI decredSubsidyUrl;
+    private final URI quantusStatsUrl;
     private final boolean refreshOnStartup;
     private final Duration staleAfter;
 
@@ -52,6 +56,10 @@ public class MiningNetworkDataService {
             @Value("${currency-rates.mining.pearl-price-url:https://pearlchain.live/api/explorer/price}") URI pearlPriceUrl,
             @Value("${currency-rates.mining.ravencoin-stats-url:https://rvn.2miners.com/api/stats}") URI ravencoinStatsUrl,
             @Value("${currency-rates.mining.ethereumclassic-stats-url:https://etc.2miners.com/api/stats}") URI ethereumClassicStatsUrl,
+            @Value("${currency-rates.mining.conflux-stats-url:https://cfx.2miners.com/api/stats}") URI confluxStatsUrl,
+            @Value("${currency-rates.mining.decred-stats-url:https://dcr.2miners.com/api/stats}") URI decredStatsUrl,
+            @Value("${currency-rates.mining.decred-subsidy-url:https://dcrdata.decred.org/api/block/best/subsidy}") URI decredSubsidyUrl,
+            @Value("${currency-rates.mining.quantus-stats-url:https://qtcscan.com/explorer-data.json}") URI quantusStatsUrl,
             @Value("${currency-rates.refresh-on-startup:true}") boolean refreshOnStartup,
             @Value("${currency-rates.mining.stale-after:PT2H}") Duration staleAfter) {
         this.repository = repository;
@@ -64,6 +72,10 @@ public class MiningNetworkDataService {
         this.pearlPriceUrl = pearlPriceUrl;
         this.ravencoinStatsUrl = ravencoinStatsUrl;
         this.ethereumClassicStatsUrl = ethereumClassicStatsUrl;
+        this.confluxStatsUrl = confluxStatsUrl;
+        this.decredStatsUrl = decredStatsUrl;
+        this.decredSubsidyUrl = decredSubsidyUrl;
+        this.quantusStatsUrl = quantusStatsUrl;
         this.refreshOnStartup = refreshOnStartup;
         this.staleAfter = staleAfter;
     }
@@ -84,6 +96,9 @@ public class MiningNetworkDataService {
         refresh("pearl", this::fetchPearl);
         refresh("ravencoin", () -> fetchPoolStats("ravencoin", currentPrices.getOrDefault("rvn", 0.0), ravencoinStatsUrl));
         refresh("ethereumclassic", () -> fetchPoolStats("ethereumclassic", currentPrices.getOrDefault("etc", 0.0), ethereumClassicStatsUrl));
+        refresh("conflux", () -> fetchPoolStats("conflux", currentPrices.getOrDefault("cfx", 0.0), confluxStatsUrl));
+        refresh("decred", () -> fetchDecred(currentPrices.getOrDefault("dcr", 0.0)));
+        refresh("quantus", () -> fetchQuantus(currentPrices.getOrDefault("qtc", 0.0)));
     }
 
     private void refresh(String coin, SnapshotFetcher fetcher) {
@@ -119,6 +134,9 @@ public class MiningNetworkDataService {
             case "pearl", "prl", "pearlhash" -> "pearl";
             case "ravencoin", "rvn" -> "ravencoin";
             case "ethereumclassic", "ethereum-classic", "etc" -> "ethereumclassic";
+            case "conflux", "cfx" -> "conflux";
+            case "decred", "dcr" -> "decred";
+            case "quantus", "qtc" -> "quantus";
             default -> null;
         };
     }
@@ -146,6 +164,16 @@ public class MiningNetworkDataService {
 
     private MiningNetworkSnapshot fetchPoolStats(String coin, double priceUsd, URI statsUrl) throws Exception {
         return parsePoolStats(coin, json(statsUrl), priceUsd, Instant.now());
+    }
+
+    private MiningNetworkSnapshot fetchDecred(double priceUsd) throws Exception {
+        JsonNode stats = json(decredStatsUrl);
+        JsonNode subsidy = json(decredSubsidyUrl);
+        return parseDecred(stats, subsidy, priceUsd, Instant.now());
+    }
+
+    private MiningNetworkSnapshot fetchQuantus(double priceUsd) throws Exception {
+        return parseQuantus(json(quantusStatsUrl), priceUsd, Instant.now());
     }
 
     private JsonNode json(URI uri) throws Exception {
@@ -182,7 +210,41 @@ public class MiningNetworkDataService {
             return new MiningNetworkSnapshot(coin, "ETC", "ETCHash", networkHashrate, difficulty,
                     targetSeconds, reward, priceUsd, collectedAt, "etc.2miners.com", "CoinGecko", false);
         }
+        if ("conflux".equals(coin)) {
+            // 2Miners exposes the live PoW block reward when the pool node supports it.
+            // Do not substitute a hard-coded subsidy: Conflux's reward schedule changes.
+            double reward = node.path("blockReward").asDouble();
+            return new MiningNetworkSnapshot(coin, "CFX", "Octopus", networkHashrate, difficulty,
+                    targetSeconds, reward, priceUsd, collectedAt, "cfx.2miners.com", "CoinGecko", false);
+        }
         throw new IllegalArgumentException("Unsupported pool-stats coin: " + coin);
+    }
+
+    static MiningNetworkSnapshot parseDecred(JsonNode stats, JsonNode subsidy, double priceUsd, Instant collectedAt) {
+        JsonNode node = stats.path("nodes").path(0);
+        double reward = subsidy.path("work_reward").asDouble() / 100_000_000.0;
+        return new MiningNetworkSnapshot("decred", "DCR", "BLAKE3",
+                node.path("networkhashps").asDouble(), node.path("difficulty").asDouble(),
+                node.path("avgBlockTime").asDouble(), reward, priceUsd, collectedAt,
+                "dcr.2miners.com + dcrdata.decred.org", "CoinGecko", false);
+    }
+
+    static MiningNetworkSnapshot parseQuantus(JsonNode stats, double priceUsd, Instant collectedAt) {
+        if (stats.path("schema").asInt(-1) != 1) throw new IllegalArgumentException("Unsupported QTCScan schema");
+        long updatedSeconds = stats.path("updated_at").asLong(0);
+        double difficulty = stats.path("difficulty").asDouble(0);
+        double networkHashrate = stats.path("windows").path("1h").path("hashrate").asDouble(0);
+        double targetSeconds = stats.path("target_block_time").asDouble(0);
+        double reward = stats.path("reward").asDouble(0);
+        if (updatedSeconds <= 0 || !(difficulty > 0) || !(networkHashrate > 0)
+                || !(targetSeconds > 0) || !(reward > 0) || !(priceUsd > 0)) {
+            throw new IllegalArgumentException("Incomplete Quantus network snapshot");
+        }
+        Instant providerUpdated = Instant.ofEpochSecond(updatedSeconds);
+        boolean providerStale = Duration.between(providerUpdated, collectedAt).compareTo(Duration.ofMinutes(3)) > 0;
+        return new MiningNetworkSnapshot("quantus", "QTC", "QPoW (Poseidon2)", networkHashrate,
+                difficulty, targetSeconds, reward, priceUsd, providerUpdated,
+                "qtcscan.com/explorer-data.json (1h estimated hashrate)", "CoinGecko", providerStale);
     }
 
     private static void validate(MiningNetworkSnapshot value) {

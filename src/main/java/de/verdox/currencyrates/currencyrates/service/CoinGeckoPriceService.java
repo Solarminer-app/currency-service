@@ -16,7 +16,10 @@ public class CoinGeckoPriceService {
             "xmr", "monero",
             "prl", "pearl-research",
             "rvn", "ravencoin",
-            "etc", "ethereum-classic");
+            "etc", "ethereum-classic",
+            "cfx", "conflux-token",
+            "dcr", "decred",
+            "qtc", "quantus");
     private final DailyCoinPricesRepository repository; private final ObjectMapper mapper;
     private final HttpTextClient http;
     public CoinGeckoPriceService(DailyCoinPricesRepository repository, ObjectMapper mapper, HttpTextClient http) { this.repository=repository; this.mapper=mapper; this.http=http; }

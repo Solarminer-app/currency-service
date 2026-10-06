@@ -1,8 +1,14 @@
 # Currency Service agent wiki
 
 This repository owns SolarMiner's central public currency and mining-network
-data service. Source code and tests are authoritative; deployment documents
-describe required rollout checks but are not evidence that a rollout happened.
+data service. It is an independent Git repository
+(`https://github.com/Solarminer-app/currency-service`) with its own Gradle
+build, CI and release pipeline; it is not a module of `Solar-Miner-Node`.
+`Solar-Miner-Node/currency-rates/` is a leftover copy from the 2026-10-04
+migration — frozen, behind this repository, and never edited, released or used
+as a source of current behavior. Source code and tests are authoritative;
+deployment documents describe required rollout checks but are not evidence that
+a rollout happened.
 
 ## Responsibility map
 
