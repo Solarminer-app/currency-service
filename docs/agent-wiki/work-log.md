@@ -1,5 +1,11 @@
 # Agent work log
 
+## 2026-10-07 — BTC price unit and C9 BTC/DCR/QTC completeness
+
+- Live read-only public host check: current production `/coin-prices` had BTC but no DCR/QTC; `/mining-networks` had XMR/PRL/RVN/ETC only. Current source was ahead of production for DCR/QTC, so source fixes alone do not change the deployed responses.
+- Fixed the legacy Bitcoin `q/24hrprice` conversion (the provider already returns USD/BTC) and added guarded V3 correction for stored, unmistakably scaled values. Added canonical BTC C9 snapshot from Blockchain.com aggregate stats, with GH/s→H/s and height-based base subsidy. Replaced unresolvable `dcr.2miners.com` with reachable dcrdata latest-block difficulty and PoW-only subsidy; QTC retains the existing CoinGecko/QTCScan collectors. Missing/incomplete snapshots still retain last-good rows and expire by the existing stale policy.
+- Provider checks: CoinGecko simple-price returned positive BTC/DCR/QTC values; Blockchain.com stats, QTCScan schema-1, and dcrdata best block/subsidy responded. No production release/deployment, post-deployment public response, real mining share or payout was verified. Full local Gradle test suite passed on JDK 21 (19 tests), including the V3 migration against H2; proxy and PC-Agent suites passed separately (25 and 77 tests).
+
 ## 2026-10-06 — Conflux network and price snapshot
 
 - Added CFX (`conflux`, alias `cfx`) to the public coin-keyed mining snapshot.

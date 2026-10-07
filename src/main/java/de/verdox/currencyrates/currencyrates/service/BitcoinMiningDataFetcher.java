@@ -24,7 +24,8 @@ public class BitcoinMiningDataFetcher {
     public BitcoinMiningSnapshot query() throws Exception {
         long miningDifficulty = new java.math.BigDecimal(get("https://blockchain.info/q/getdifficulty")).longValue();
         double hashRate = Double.parseDouble(get("https://blockchain.info/q/hashrate"));
-        double priceInDollar = Double.parseDouble(get("https://blockchain.info/q/24hrprice")) / Math.pow(10, 8);
+        // blockchain.info/q/24hrprice already returns USD per BTC, not satoshis.
+        double priceInDollar = Double.parseDouble(get("https://blockchain.info/q/24hrprice"));
         int blockSubsidy = (int) (Double.parseDouble(get("https://blockchain.info/q/bcperblock")) * Math.pow(10, 8));
 
         String statsJson = get("https://api.blockchair.com/bitcoin/stats");

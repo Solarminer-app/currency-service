@@ -26,12 +26,13 @@ import java.util.logging.Logger;
 @Service
 public class MiningNetworkDataService {
     private static final Logger LOGGER = Logger.getLogger(MiningNetworkDataService.class.getName());
-    private static final List<String> COINS = List.of("monero", "pearl", "ravencoin", "ethereumclassic", "conflux", "decred", "quantus");
+    private static final List<String> COINS = List.of("bitcoin", "monero", "pearl", "ravencoin", "ethereumclassic", "conflux", "decred", "quantus");
 
     private final MiningNetworkSnapshotRepository repository;
     private final ObjectMapper mapper;
     private final HttpTextClient http;
     private final CoinGeckoPriceService prices;
+    private final URI bitcoinStatsUrl;
     private final URI moneroNetworkUrl;
     private final String moneroBlockUrl;
     private final URI pearlStatsUrl;
@@ -50,6 +51,7 @@ public class MiningNetworkDataService {
             ObjectMapper mapper,
             HttpTextClient http,
             CoinGeckoPriceService prices,
+            @Value("${currency-rates.mining.bitcoin-stats-url:https://api.blockchain.info/stats}") URI bitcoinStatsUrl,
             @Value("${currency-rates.mining.monero-network-url:https://xmrchain.net/api/networkinfo}") URI moneroNetworkUrl,
             @Value("${currency-rates.mining.monero-block-url:https://xmrchain.net/api/block/%d}") String moneroBlockUrl,
             @Value("${currency-rates.mining.pearl-stats-url:https://pearlchain.live/api/explorer/stats}") URI pearlStatsUrl,
@@ -57,7 +59,7 @@ public class MiningNetworkDataService {
             @Value("${currency-rates.mining.ravencoin-stats-url:https://rvn.2miners.com/api/stats}") URI ravencoinStatsUrl,
             @Value("${currency-rates.mining.ethereumclassic-stats-url:https://etc.2miners.com/api/stats}") URI ethereumClassicStatsUrl,
             @Value("${currency-rates.mining.conflux-stats-url:https://cfx.2miners.com/api/stats}") URI confluxStatsUrl,
-            @Value("${currency-rates.mining.decred-stats-url:https://dcr.2miners.com/api/stats}") URI decredStatsUrl,
+            @Value("${currency-rates.mining.decred-stats-url:https://dcrdata.decred.org/api/block/best}") URI decredStatsUrl,
             @Value("${currency-rates.mining.decred-subsidy-url:https://dcrdata.decred.org/api/block/best/subsidy}") URI decredSubsidyUrl,
             @Value("${currency-rates.mining.quantus-stats-url:https://qtcscan.com/explorer-data.json}") URI quantusStatsUrl,
             @Value("${currency-rates.refresh-on-startup:true}") boolean refreshOnStartup,
@@ -66,6 +68,7 @@ public class MiningNetworkDataService {
         this.mapper = mapper;
         this.http = http;
         this.prices = prices;
+        this.bitcoinStatsUrl = bitcoinStatsUrl;
         this.moneroNetworkUrl = moneroNetworkUrl;
         this.moneroBlockUrl = moneroBlockUrl;
         this.pearlStatsUrl = pearlStatsUrl;
@@ -92,6 +95,7 @@ public class MiningNetworkDataService {
 
     public synchronized void refreshAll() {
         Map<String, Double> currentPrices = prices.refreshCurrentPrices().orElseGet(Map::of);
+        refresh("bitcoin", () -> parseBitcoin(json(bitcoinStatsUrl), currentPrices.getOrDefault("btc", 0.0), Instant.now()));
         refresh("monero", () -> fetchMonero(currentPrices.getOrDefault("xmr", 0.0)));
         refresh("pearl", this::fetchPearl);
         refresh("ravencoin", () -> fetchPoolStats("ravencoin", currentPrices.getOrDefault("rvn", 0.0), ravencoinStatsUrl));
@@ -130,6 +134,7 @@ public class MiningNetworkDataService {
     static String canonicalCoin(String coinOrAlias) {
         if (coinOrAlias == null) return null;
         return switch (coinOrAlias.toLowerCase(Locale.ROOT)) {
+            case "bitcoin", "btc" -> "bitcoin";
             case "monero", "xmr" -> "monero";
             case "pearl", "prl", "pearlhash" -> "pearl";
             case "ravencoin", "rvn" -> "ravencoin";
@@ -187,6 +192,19 @@ public class MiningNetworkDataService {
                 collectedAt, "xmrchain.net", "CoinGecko", false);
     }
 
+    static MiningNetworkSnapshot parseBitcoin(JsonNode stats, double priceUsd, Instant collectedAt) {
+        long height = stats.path("n_blocks_total").asLong();
+        long timestampMs = stats.path("timestamp").asLong();
+        if (height <= 0 || timestampMs <= 0) throw new IllegalArgumentException("Incomplete Bitcoin stats");
+        double effectivePrice = priceUsd > 0 ? priceUsd : stats.path("market_price_usd").asDouble();
+        double reward = 50.0 / Math.pow(2.0, Math.floorDiv(height, 210_000L));
+        Instant updated = Instant.ofEpochMilli(timestampMs);
+        return new MiningNetworkSnapshot("bitcoin", "BTC", "SHA-256",
+                stats.path("hash_rate").asDouble() * 1_000_000_000.0,
+                stats.path("difficulty").asDouble(), 600.0, reward, effectivePrice, updated,
+                "blockchain.com", priceUsd > 0 ? "CoinGecko" : "blockchain.com", false);
+    }
+
     static MiningNetworkSnapshot parsePearl(JsonNode stats, JsonNode price, Instant collectedAt) {
         return new MiningNetworkSnapshot("pearl", "PRL", "PearlHash", stats.path("networkHashPs").asDouble(),
                 stats.path("difficulty").asDouble(), stats.path("targetBlockSecs").asDouble(),
@@ -221,12 +239,14 @@ public class MiningNetworkDataService {
     }
 
     static MiningNetworkSnapshot parseDecred(JsonNode stats, JsonNode subsidy, double priceUsd, Instant collectedAt) {
-        JsonNode node = stats.path("nodes").path(0);
+        double difficulty = stats.path("diff").asDouble();
+        long blockTime = stats.path("time").asLong();
+        if (blockTime <= 0) throw new IllegalArgumentException("Decred block timestamp is missing");
         double reward = subsidy.path("work_reward").asDouble() / 100_000_000.0;
         return new MiningNetworkSnapshot("decred", "DCR", "BLAKE3",
-                node.path("networkhashps").asDouble(), node.path("difficulty").asDouble(),
-                node.path("avgBlockTime").asDouble(), reward, priceUsd, collectedAt,
-                "dcr.2miners.com + dcrdata.decred.org", "CoinGecko", false);
+                difficulty * 4_294_967_296.0 / 300.0, difficulty,
+                300.0, reward, priceUsd, Instant.ofEpochSecond(blockTime),
+                "dcrdata.decred.org", "CoinGecko", false);
     }
 
     static MiningNetworkSnapshot parseQuantus(JsonNode stats, double priceUsd, Instant collectedAt) {

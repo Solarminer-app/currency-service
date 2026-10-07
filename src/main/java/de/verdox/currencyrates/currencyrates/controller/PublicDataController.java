@@ -66,7 +66,7 @@ public class PublicDataController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Current or historic USD prices. Coin IDs are SolarMiner's btc, xmr, prl, rvn and etc. */
+    /** Current or historic USD prices keyed by SolarMiner tickers (BTC, XMR, PRL, RVN, ETC, CFX, DCR, QTC). */
     @GetMapping("/coin-prices")
     public ResponseEntity<Map<String, Double>> coinPrices(@RequestParam(name = "date", required = false) LocalDate date) {
         return coinPrices.prices(date == null ? LocalDate.now(java.time.ZoneOffset.UTC) : date)

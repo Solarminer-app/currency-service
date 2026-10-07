@@ -17,7 +17,7 @@ class BitcoinMiningDataFetcherTest {
         Map<String, String> responses = Map.of(
                 "https://blockchain.info/q/getdifficulty", "123456",
                 "https://blockchain.info/q/hashrate", "5000",
-                "https://blockchain.info/q/24hrprice", "10000000000",
+                "https://blockchain.info/q/24hrprice", "100.00",
                 "https://blockchain.info/q/bcperblock", "6.25",
                 "https://api.blockchair.com/bitcoin/stats", "{\"data\":{\"average_transaction_fee_24h\":42}}"
         );

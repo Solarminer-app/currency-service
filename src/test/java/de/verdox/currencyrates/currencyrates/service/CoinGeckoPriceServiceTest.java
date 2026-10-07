@@ -23,13 +23,14 @@ class CoinGeckoPriceServiceTest {
                 ? "{\"price\":1.013}"
                 : """
                   {"bitcoin":{"usd":85423},"monero":{"usd":548.81},
-                   "ravencoin":{"usd":0.00231303},"ethereum-classic":{"usd":8.89}}
+                   "ravencoin":{"usd":0.00231303},"ethereum-classic":{"usd":8.89},
+                   "decred":{"usd":18.04},"quantus":{"usd":101.97}}
                   """;
         CoinGeckoPriceService service = new CoinGeckoPriceService(repository, new ObjectMapper(), http);
 
         var result = service.refreshCurrentPrices().orElseThrow();
 
-        assertThat(result).containsKeys("btc", "xmr", "prl", "rvn", "etc");
+        assertThat(result).containsKeys("btc", "xmr", "prl", "rvn", "etc", "dcr", "qtc");
         assertThat(result.get("prl")).isEqualTo(1.013d);
     }
 }

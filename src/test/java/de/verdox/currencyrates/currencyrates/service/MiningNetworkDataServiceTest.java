@@ -29,6 +29,30 @@ class MiningNetworkDataServiceTest {
     }
 
     @Test
+    void parsesBitcoinStatsInHashesPerSecondAndUsdPerCoin() throws Exception {
+        var stats = mapper.readTree("""
+                {"timestamp":1791362000000,"market_price_usd":84000.0,
+                 "hash_rate":1.075E12,"difficulty":1.327E14,"n_blocks_total":970314}
+                """);
+        var result = MiningNetworkDataService.parseBitcoin(stats, 84100.0, now);
+        assertThat(result.getCoin()).isEqualTo("bitcoin");
+        assertThat(result.getNetworkHashrateHps()).isEqualTo(1.075E21);
+        assertThat(result.getBlockReward()).isEqualTo(3.125);
+        assertThat(result.getPriceUsd()).isEqualTo(84100.0);
+    }
+
+    @Test
+    void parsesDecredExplorerDifficultyAndPowOnlyReward() throws Exception {
+        var stats = mapper.readTree("{\"diff\":421888.6,\"time\":1791361822}");
+        var subsidy = mapper.readTree("{\"work_reward\":5100425,\"total\":510042578}");
+        var result = MiningNetworkDataService.parseDecred(stats, subsidy, 18.04, now);
+        assertThat(result.getNetworkHashrateHps()).isCloseTo(421888.6 * Math.pow(2, 32) / 300,
+                org.assertj.core.data.Offset.offset(0.01));
+        assertThat(result.getBlockReward()).isEqualTo(0.05100425);
+        assertThat(result.getPriceUsd()).isEqualTo(18.04);
+    }
+
+    @Test
     void parsesPearlProviderFreshness() throws Exception {
         var stats = mapper.readTree("""
                 {"difficulty":33564279.039,"networkHashPs":5.01364992850243E19,
@@ -66,6 +90,7 @@ class MiningNetworkDataServiceTest {
     @Test
     void resolvesOnlyDocumentedCanonicalAliases() {
         assertThat(MiningNetworkDataService.canonicalCoin("XMR")).isEqualTo("monero");
+        assertThat(MiningNetworkDataService.canonicalCoin("BTC")).isEqualTo("bitcoin");
         assertThat(MiningNetworkDataService.canonicalCoin("PRL")).isEqualTo("pearl");
         assertThat(MiningNetworkDataService.canonicalCoin("RVN")).isEqualTo("ravencoin");
         assertThat(MiningNetworkDataService.canonicalCoin("ETC")).isEqualTo("ethereumclassic");
