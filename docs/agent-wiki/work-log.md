@@ -89,3 +89,17 @@
   `Solar-Miner-Node/.github/workflows/docker-deploy-currency_rates_service.yml`
   on `currency-rates-v*` tags. Until that wiring is removed, a build or image
   from the Node repository says nothing about this service.
+
+## 2026-10-08 — Open cleanup gate closed: Node-side wiring removed
+
+- The leftover copy `Solar-Miner-Node/currency-rates/` was deleted from the Node
+  repository together with `include("currency-rates")`, the
+  `currencyRatesVersion`/`currencyRatesImage` Gradle properties, the
+  `printCurrencyRates*` tasks, the `docker-deploy-currency_rates_service.yml`
+  workflow and the currency-rates legs of `docker-beta.yml`.
+- `verdox/currency-rates-api` is now built and published only from this
+  repository (tag `v*` → `release.yml`). Node's production Compose still runs a
+  local copy of this image by design (owner decision); the Node sim Compose now
+  builds from this repository's `build/libs/currency-rates.jar`.
+- Evidence: Node `gradlew projects` lists no `:currency-rates`; Node compile and
+  both Compose configs verified clean on 2026-10-08.
