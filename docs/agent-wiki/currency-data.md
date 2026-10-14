@@ -20,6 +20,8 @@ Checked against this service and the PC-Agent consumer on 2026-10-04. This is th
 
 Successful snapshots replace the row keyed by canonical coin. Failed or incomplete refreshes never write zeroes and retain the prior row. The collector refreshes every ten minutes; an otherwise valid row is marked stale after two hours. `coin-prices` remains backward-compatible and adds `rvn` and `etc`; current PRL falls back to Pearl's public price endpoint because CoinGecko's configured `pearl-research` ID did not return a quote in the 2026-10-04 live probe.
 
+Historical `coin-prices?date=...` lookups fetch each coin independently and persist any positive quotes returned. An upstream failure for one coin does not discard quotes from other coins. The endpoint still returns 404 when no historical quote can be fetched for any coin; consumers should treat that as unavailable data, not a service-wide outage.
+
 ## Coin providers and calculations
 
 | Canonical key / ticker | Network source | Price source | Reward and interval |
@@ -49,8 +51,8 @@ Verification covers provider fixture parsing, reward-era calculations, alias res
 
 The source collector now recognizes canonical `quantus` and alias `qtc`.
 CoinGecko's API coin ID is `quantus`. Network snapshots come from QTCScan's
-public schema-1 `explorer-data.json`: one-hour estimated network hashrate (H/s),
-difficulty, `target_block_time` (seconds) and `reward` (QTC/block). The API's
+public schema-1 `explorer-data.json`: estimated network hashrate (H/s),
+difficulty, observed block interval (seconds) and `reward` (QTC/block). The API's
 `updated_at` Unix timestamp is retained; observations older than three minutes
 are marked provider-stale, and malformed/missing fields do not overwrite the
 last complete persisted snapshot. The public C9 response schema is unchanged.
@@ -59,5 +61,25 @@ The hashrate is an explorer estimate from adjacent canonical block difficulty,
 not a directly measured network counter. QTCScan is an independent explorer,
 not operated by Quantus. The 2026-10-07 follow-up observed a live schema-1
 QTCScan response and a positive CoinGecko `quantus` quote. Persisted QTC rows
-and a deployed public endpoint response are still unverified; do not describe
-QTC as an operational profitability feed until those checks pass.
+and a deployed public endpoint response were initially unverified; do not
+describe QTC as an operational profitability feed until those checks pass.
+
+## 2026-10-14 — QTC forecast uses a consistent observation window
+
+The proxy and public calculator combine network hashrate with blocks per day.
+QTCScan's hashrate is an observed estimate (difficulty accumulated over elapsed
+block time), so the 1-hour hashrate must not be combined with the nominal
+12-second target when recent blocks are slower. QTC now uses both
+`windows.24h.hashrate` and `windows.24h.avg_block_time`; the latter is published
+as the snapshot's `targetBlockSeconds` value. This remains an estimate, not a
+pool-credit promise. For the live sample on 2026-10-14 18:14 UTC, applying the
+prior 1-hour hashrate plus 12-second target to 4.19 GH/s at $114.99/QTC yielded
+about $36.95/day; using the matching 24-hour rate and 14.7446-second observed
+interval yields about $27.35/day gross. Network variance, miner uptime and pool
+payment rules can still make credited rewards differ.
+
+QTC integration steps outside market-data collection are non-applicable to
+this correction: it changes neither coin registration nor wallet, miner,
+Stratum, fee, referral or payout behavior. QTC's operational integration gates
+remain open. Added a parser regression test for selecting the paired 24-hour
+fields; no production deployment is implied by the source change.

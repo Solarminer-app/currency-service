@@ -88,6 +88,22 @@ class MiningNetworkDataServiceTest {
     }
 
     @Test
+    void parsesQuantusHashrateAndObservedBlockTimeFromTheSameTwentyFourHourWindow() throws Exception {
+        var stats = mapper.readTree("""
+                {"schema":1,"updated_at":1792000000,"difficulty":"424686572498361",
+                 "target_block_time":12,"reward":0.3,
+                 "windows":{"1h":{"avg_block_time":15.15,"hashrate":28166668293074.73},
+                            "24h":{"avg_block_time":14.7446,"hashrate":30973317576437.16}}}
+                """);
+
+        var result = MiningNetworkDataService.parseQuantus(stats, 114.99, Instant.ofEpochSecond(1792000000));
+
+        assertThat(result.getNetworkHashrateHps()).isEqualTo(30973317576437.16);
+        assertThat(result.getTargetBlockSeconds()).isEqualTo(14.7446);
+        assertThat(result.getBlockReward()).isEqualTo(0.3);
+    }
+
+    @Test
     void resolvesOnlyDocumentedCanonicalAliases() {
         assertThat(MiningNetworkDataService.canonicalCoin("XMR")).isEqualTo("monero");
         assertThat(MiningNetworkDataService.canonicalCoin("BTC")).isEqualTo("bitcoin");

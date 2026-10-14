@@ -6,6 +6,7 @@ import de.verdox.currencyrates.currencyrates.repository.DailyCoinPricesRepositor
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.io.IOException;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,5 +33,22 @@ class CoinGeckoPriceServiceTest {
 
         assertThat(result).containsKeys("btc", "xmr", "prl", "rvn", "etc", "dcr", "qtc");
         assertThat(result.get("prl")).isEqualTo(1.013d);
+    }
+
+    @Test
+    void historicalPricesKeepAvailableCoinsWhenAnotherProviderLookupFails() {
+        LocalDate date = LocalDate.of(2026, 9, 14);
+        DailyCoinPricesRepository repository = mock(DailyCoinPricesRepository.class);
+        when(repository.findById(date)).thenReturn(Optional.empty());
+        when(repository.save(any(DailyCoinPrices.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        HttpTextClient http = uri -> {
+            if (uri.getPath().contains("/pearl-research/")) throw new IOException("CoinGecko history unavailable");
+            return "{\"market_data\":{\"current_price\":{\"usd\":12.5}}}";
+        };
+        CoinGeckoPriceService service = new CoinGeckoPriceService(repository, new ObjectMapper(), http);
+
+        var result = service.prices(date).orElseThrow();
+
+        assertThat(result.getPrices()).containsEntry("btc", 12.5d).doesNotContainKey("prl");
     }
 }

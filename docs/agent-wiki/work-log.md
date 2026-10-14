@@ -1,5 +1,18 @@
 # Agent work log
 
+## 2026-10-14 — Align QTC forecast rate and block interval windows
+
+- QTCScan estimates network hashrate from observed difficulty over elapsed block time. The collector had paired its 1-hour hashrate with the nominal 12-second target; current observed blocks were slower, which inflated gross revenue estimates.
+- QTC now publishes its 24-hour estimated hashrate with that same window's observed average block interval. The public JSON schema is unchanged, so the PC-Agent, proxy and landing calculator receive the corrected estimate through the existing snapshot.
+- Current live-input example (4.19 GH/s, $114.99/QTC): about $36.95/day under the previous 1-hour/12-second pairing versus $27.35/day using 24-hour hashrate and a 14.7446-second interval. Actual pool credits remain variable and may differ.
+- Added parser regression coverage for selecting the matching 24-hour fields. QTC's separate operational integration gates (real pool accounting, fees and rollout evidence) remain open. No deployment performed.
+
+## 2026-10-14 — Historische Coin-Preise trotz einzelner Providerfehler
+
+- Historische `/coin-prices?date=...`-Abfragen isolieren CoinGecko-Fehler je Coin. Verfügbare positive Quotes werden gespeichert und ausgeliefert, auch wenn ein anderer Coin für das Datum fehlschlägt; nur ohne jeden Quote bleibt die bestehende 404-Antwort.
+- Der Node lädt beim Start ein 31-Tage-Fenster einschließlich des ältesten Tages. Ein 404 bedeutet dort fehlende historische Daten und wird deshalb auf FINE statt WARN protokolliert. Andere HTTP-Fehler bleiben WARN.
+- Verifikation: Regressionstest ergänzt; `git diff --check` erfolgreich. `./gradlew test --no-daemon` und Node-`compileJava` konnten nicht starten: Gradle meldet `Could not determine a usable wildcard IP for this machine` (Sandbox-Netzwerkgrenze). Der erste Wrapper-Aufruf ohne `GRADLE_USER_HOME` traf zusätzlich auf das schreibgeschützte globale Gradle-Verzeichnis; der Wiederholungsversuch unter `/tmp` erreichte denselben Netzwerkfehler.
+
 ## 2026-10-07 — BTC price unit and C9 BTC/DCR/QTC completeness
 
 - Live read-only public host check: current production `/coin-prices` had BTC but no DCR/QTC; `/mining-networks` had XMR/PRL/RVN/ETC only. Current source was ahead of production for DCR/QTC, so source fixes alone do not change the deployed responses.

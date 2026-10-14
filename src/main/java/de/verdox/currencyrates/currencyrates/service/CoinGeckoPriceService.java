@@ -31,10 +31,14 @@ public class CoinGeckoPriceService {
             if (date.equals(LocalDate.now(ZoneOffset.UTC))) return refreshCurrentPrices().map(ignored -> repository.findById(date).orElseThrow());
             Map<String,Double> prices = new HashMap<>();
             for (var entry : IDS.entrySet()) {
-                String url = "https://api.coingecko.com/api/v3/coins/" + entry.getValue() + "/history?date=" + date.format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-uuuu"));
-                JsonNode root = get(url);
-                JsonNode value = root.path("market_data").path("current_price").path("usd");
-                if (value.isNumber() && value.asDouble() > 0) prices.put(entry.getKey(), value.asDouble());
+                try {
+                    String url = "https://api.coingecko.com/api/v3/coins/" + entry.getValue() + "/history?date=" + date.format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-uuuu"));
+                    JsonNode root = get(url);
+                    JsonNode value = root.path("market_data").path("current_price").path("usd");
+                    if (value.isNumber() && value.asDouble() > 0) prices.put(entry.getKey(), value.asDouble());
+                } catch (Exception ignored) {
+                    // Historical availability and provider responses vary by coin. Keep valid quotes.
+                }
             }
             return prices.isEmpty() ? Optional.empty() : Optional.of(repository.save(new DailyCoinPrices(date, prices)));
         } catch (Exception ignored) { return Optional.empty(); }

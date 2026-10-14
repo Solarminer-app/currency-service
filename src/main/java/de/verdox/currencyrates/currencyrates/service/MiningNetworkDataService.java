@@ -253,8 +253,13 @@ public class MiningNetworkDataService {
         if (stats.path("schema").asInt(-1) != 1) throw new IllegalArgumentException("Unsupported QTCScan schema");
         long updatedSeconds = stats.path("updated_at").asLong(0);
         double difficulty = stats.path("difficulty").asDouble(0);
-        double networkHashrate = stats.path("windows").path("1h").path("hashrate").asDouble(0);
-        double targetSeconds = stats.path("target_block_time").asDouble(0);
+        // QTCScan estimates hashrate from observed block difficulty over observed
+        // elapsed time. Pair the same 24h window's hashrate and block interval;
+        // combining a 1h rate with the nominal 12s target can materially inflate
+        // revenue while actual blocks are arriving more slowly.
+        JsonNode window = stats.path("windows").path("24h");
+        double networkHashrate = window.path("hashrate").asDouble(0);
+        double targetSeconds = window.path("avg_block_time").asDouble(0);
         double reward = stats.path("reward").asDouble(0);
         if (updatedSeconds <= 0 || !(difficulty > 0) || !(networkHashrate > 0)
                 || !(targetSeconds > 0) || !(reward > 0) || !(priceUsd > 0)) {
