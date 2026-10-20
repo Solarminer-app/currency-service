@@ -4,7 +4,7 @@
 
 - Preserved the pre-existing provider-release/fallback changes in this working tree. Scheduled currency collection now uses the provider's dated `latest` snapshot when available; if both provider endpoints fail or return no usable rates, it saves the newest persisted rates dated on or before today under their original date, without mislabelling stale data as today's rates.
 - Bitcoin daily stats continue to obtain their quote directly from Blockchain.com and now fall back to CoinGecko's direct simple-price endpoint if that quote is unavailable or invalid. Neither path calls SolarMiner's public Currency Service API.
-- Added regression coverage for the stored-rate fallback and independent BTC quote fallback. `git diff --check` passes. The focused Gradle tests could not start because this environment has no Java executable and `JAVA_HOME` is unset; IntelliJ IDEA MCP tools were unavailable. No production deployment performed.
+- Added regression coverage for the stored-rate fallback and independent BTC quote fallback. The CI output supplied afterward exposed an outdated `verifyNoInteractions` assertion: the failure path now intentionally checks the latest persisted exchange-rate row. Updated the assertion to allow that lookup while ensuring no rate is persisted without a Bitcoin snapshot. Focused `DataGathererServiceTest` and `BitcoinMiningDataFetcherTest` pass on Temurin Java 21; `git diff --check` passes. No production deployment performed.
 
 ## 2026-10-20 — Fiat exchange-rate provider release-date and fallback handling
 

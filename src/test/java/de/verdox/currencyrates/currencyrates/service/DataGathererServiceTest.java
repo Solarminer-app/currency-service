@@ -133,7 +133,9 @@ class DataGathererServiceTest {
         service.scheduledFetch();
 
         assertFalse(service.saveDailyStatsToDatabase());
-        verifyNoInteractions(bitcoinRepository, ratesRepository);
+        verifyNoInteractions(bitcoinRepository);
+        verify(ratesRepository).findFirstByDateLessThanEqualOrderByDateDesc(any(LocalDate.class));
+        verify(ratesRepository, never()).save(any(DailyUsdRates.class));
     }
 
     @Test
