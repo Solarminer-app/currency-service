@@ -24,8 +24,8 @@ public class BitcoinMiningDataFetcher {
     public BitcoinMiningSnapshot query() throws Exception {
         long miningDifficulty = new java.math.BigDecimal(get("https://blockchain.info/q/getdifficulty")).longValue();
         double hashRate = Double.parseDouble(get("https://blockchain.info/q/hashrate"));
-        // blockchain.info/q/24hrprice already returns USD per BTC, not satoshis.
-        double priceInDollar = Double.parseDouble(get("https://blockchain.info/q/24hrprice"));
+        // Both independent providers return USD per BTC; neither request goes through our public API.
+        double priceInDollar = fetchBitcoinPriceUsd();
         int blockSubsidy = (int) (Double.parseDouble(get("https://blockchain.info/q/bcperblock")) * Math.pow(10, 8));
 
         String statsJson = get("https://api.blockchair.com/bitcoin/stats");
@@ -43,6 +43,20 @@ public class BitcoinMiningDataFetcher {
 
     private String get(String url) throws Exception {
         return httpClient.get(URI.create(url));
+    }
+
+    private double fetchBitcoinPriceUsd() throws Exception {
+        try {
+            double price = Double.parseDouble(get("https://blockchain.info/q/24hrprice"));
+            if (price > 0) return price;
+        } catch (Exception primaryFailure) {
+            // Fall through to a separate market-data provider.
+        }
+
+        JsonNode response = objectMapper.readTree(get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"));
+        double fallbackPrice = response.path("bitcoin").path("usd").asDouble(0.0);
+        if (fallbackPrice <= 0) throw new IllegalStateException("Bitcoin price providers returned no positive USD quote.");
+        return fallbackPrice;
     }
 
     public record BitcoinMiningSnapshot(

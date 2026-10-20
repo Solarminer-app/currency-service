@@ -1,5 +1,17 @@
 # Agent work log
 
+## 2026-10-20 — Reuse latest currency snapshot and independent BTC quote
+
+- Preserved the pre-existing provider-release/fallback changes in this working tree. Scheduled currency collection now uses the provider's dated `latest` snapshot when available; if both provider endpoints fail or return no usable rates, it saves the newest persisted rates dated on or before today under their original date, without mislabelling stale data as today's rates.
+- Bitcoin daily stats continue to obtain their quote directly from Blockchain.com and now fall back to CoinGecko's direct simple-price endpoint if that quote is unavailable or invalid. Neither path calls SolarMiner's public Currency Service API.
+- Added regression coverage for the stored-rate fallback and independent BTC quote fallback. `git diff --check` passes. The focused Gradle tests could not start because this environment has no Java executable and `JAVA_HOME` is unset; IntelliJ IDEA MCP tools were unavailable. No production deployment performed.
+
+## 2026-10-20 — Fiat exchange-rate provider release-date and fallback handling
+
+- Verified the `@fawazahmed0/currency-api` v1 URL shape remains correct. At the check time, `@latest` and the dated 2026-10-19 snapshot returned valid USD data, while the 2026-10-20 tag returned the provider's expected 404 because that daily release did not yet exist.
+- Added the provider-documented Cloudflare Pages fallback after a jsDelivr failure. Historical requests now reject payloads whose declared snapshot date differs from the requested date; an unpublished day is unavailable rather than silently receiving an incorrect quote.
+- `latest` snapshots now persist under the payload's declared UTC date, not the service's wall-clock date. Added URI, fallback and snapshot-date regression coverage. No production deployment performed.
+
 ## 2026-10-14 — Align QTC forecast rate and block interval windows
 
 - QTCScan estimates network hashrate from observed difficulty over elapsed block time. The collector had paired its 1-hour hashrate with the nominal 12-second target; current observed blocks were slower, which inflated gross revenue estimates.

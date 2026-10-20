@@ -22,11 +22,15 @@ Successful snapshots replace the row keyed by canonical coin. Failed or incomple
 
 Historical `coin-prices?date=...` lookups fetch each coin independently and persist any positive quotes returned. An upstream failure for one coin does not discard quotes from other coins. The endpoint still returns 404 when no historical quote can be fetched for any coin; consumers should treat that as unavailable data, not a service-wide outage.
 
+## Fiat exchange-rate provider behavior
+
+The service uses the documented `@fawazahmed0/currency-api` v1 URL shape. A dated historical lookup is accepted only when the payload date matches the requested date. For scheduled current collection, jsDelivr is tried first, followed by the provider's Cloudflare Pages endpoint; the `latest` payload's own date is persisted. If both endpoints fail or return no usable rates, the service reuses the newest persisted rates dated on or before today and retains that original date. It never relabels yesterday's quote as today's. If no stored quote exists, the daily snapshot is unavailable rather than replaced with zeroes.
+
 ## Coin providers and calculations
 
 | Canonical key / ticker | Network source | Price source | Reward and interval |
 | --- | --- | --- | --- |
-| `bitcoin` / BTC | [Blockchain.com stats](https://www.blockchain.com/explorer/api/charts_api), hash rate converted from GH/s to H/s | CoinGecko `bitcoin`, falling back to Blockchain.com's USD/BTC quote | 50 BTC halved each 210,000 blocks; 600-second target. The legacy `bitcoin-stats` collector separately uses `q/24hrprice`, whose response is already USD/BTC. |
+| `bitcoin` / BTC | [Blockchain.com stats](https://www.blockchain.com/explorer/api/charts_api), hash rate converted from GH/s to H/s | Legacy daily stats use Blockchain.com's USD/BTC quote, falling back directly to CoinGecko's simple-price API; neither price is fetched through SolarMiner's public API | 50 BTC halved each 210,000 blocks; 600-second target. The separate historical `bitcoin-stats` backfill uses mempool.space historical prices. |
 | `monero` / XMR | [`xmrchain.net` network and latest block](https://xmrchain.net/api/networkinfo) | [CoinGecko](https://docs.coingecko.com/reference/simple-price) | Latest coinbase outputs converted from atomic units; provider target seconds |
 | `pearl` / PRL | [`pearlchain.live/api/explorer/stats`](https://pearlchain.live/api/explorer/stats) | [Pearl price response](https://pearlchain.live/api/explorer/price), currently identifying CoinPaprika | Provider reward, target and provider stale flag |
 | `ravencoin` / RVN | [2Miners public RVN stats](https://rvn.2miners.com/api/stats) | [CoinGecko](https://docs.coingecko.com/reference/simple-price) | 5,000 RVN shifted each 2,100,000-block era; provider average block seconds. The interval and initial subsidy are defined in [Ravencoin Core `chainparams.cpp`](https://github.com/RavenProject/Ravencoin/blob/master/src/chainparams.cpp). |

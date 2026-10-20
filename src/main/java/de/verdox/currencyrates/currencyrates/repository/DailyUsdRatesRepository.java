@@ -14,4 +14,6 @@ public interface DailyUsdRatesRepository extends JpaRepository<DailyUsdRates, Lo
     @Query("SELECT d FROM DailyUsdRates d WHERE d.date >= :startDate ORDER BY d.date ASC")
 
     List<DailyUsdRates> findRecentRates(@Param("startDate") LocalDate startDate);
+
+    java.util.Optional<DailyUsdRates> findFirstByDateLessThanEqualOrderByDateDesc(LocalDate date);
 }

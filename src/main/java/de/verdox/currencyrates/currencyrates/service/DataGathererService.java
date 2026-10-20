@@ -92,9 +92,14 @@ public class DataGathererService {
     @Transactional
     public DailyUsdRates fetchAndSaveForDate(LocalDate date) {
         LOGGER.log(Level.INFO, "Fetching data for date: " + date);
-        JsonNode ratesNode = queryExchangeRates(date);
+        ExchangeRatesSnapshot snapshot = queryExchangeRates(date);
 
-        Map<String, Double> ratesMap = extractRatesMap(ratesNode);
+        if (snapshot == null || !date.equals(snapshot.date())) {
+            LOGGER.log(Level.INFO, "Exchange-rate data for " + date + " is not published by the provider yet.");
+            return null;
+        }
+
+        Map<String, Double> ratesMap = snapshot.rates();
 
         if (ratesMap.isEmpty()) {
             LOGGER.log(Level.WARNING, "No data found for date: " + date);
@@ -109,8 +114,15 @@ public class DataGathererService {
     public synchronized boolean saveDailyStatsToDatabase() {
         try {
             LocalDate todayUtc = LocalDate.now(ZoneOffset.UTC);
-            JsonNode currencyRatesUSD = queryExchangeRates();
-            Map<String, Double> ratesMap = extractRatesMap(currencyRatesUSD);
+            ExchangeRatesSnapshot exchangeRates = queryExchangeRates();
+            if (exchangeRates == null || exchangeRates.rates().isEmpty()) {
+                DailyUsdRates storedRates = ratesRepository.findFirstByDateLessThanEqualOrderByDateDesc(todayUtc).orElse(null);
+                if (storedRates != null && storedRates.getRates() != null && !storedRates.getRates().isEmpty()) {
+                    exchangeRates = new ExchangeRatesSnapshot(storedRates.getDate(), storedRates.getRates());
+                    LOGGER.log(Level.WARNING, "Currency provider unavailable; using latest persisted exchange rates from UTC date: " + storedRates.getDate());
+                }
+            }
+            Map<String, Double> ratesMap = exchangeRates == null ? Map.of() : exchangeRates.rates();
             BitcoinMiningDataFetcher.BitcoinMiningSnapshot bitcoinSnapshot = latestBitcoinSnapshot;
 
             if (bitcoinSnapshot == null || ratesMap.isEmpty()) {
@@ -132,12 +144,13 @@ public class DataGathererService {
                 LOGGER.log(Level.INFO, "Bitcoin network stats for " + todayUtc + " already exist. Skipping.");
             }
 
-            if (!ratesRepository.existsById(todayUtc)) {
-                DailyUsdRates dailyRates = new DailyUsdRates(todayUtc, ratesMap);
+            LocalDate ratesDate = exchangeRates.date();
+            if (!ratesRepository.existsById(ratesDate)) {
+                DailyUsdRates dailyRates = new DailyUsdRates(ratesDate, ratesMap);
                 ratesRepository.save(dailyRates);
-                LOGGER.log(Level.INFO, "Successfully saved daily currency rates for UTC date: " + todayUtc);
+                LOGGER.log(Level.INFO, "Successfully saved daily currency rates for provider UTC date: " + ratesDate);
             } else {
-                LOGGER.log(Level.INFO, "Currency rates for " + todayUtc + " already exist. Skipping.");
+                LOGGER.log(Level.INFO, "Currency rates for " + ratesDate + " already exist. Skipping.");
             }
 
             return true;
@@ -161,27 +174,55 @@ public class DataGathererService {
         return ratesMap;
     }
 
-    private JsonNode queryExchangeRates(LocalDate date) {
+    private ExchangeRatesSnapshot queryExchangeRates(LocalDate date) {
         try {
             String dateParam = (date == null) ? "latest" : date.toString();
             LOGGER.log(Level.INFO, "Collecting currency exchange rates for date: " + dateParam);
-            String jsonResponse = httpClient.get(exchangeRatesUri(date));
+            String jsonResponse;
+            try {
+                jsonResponse = httpClient.get(exchangeRatesUri(date));
+            } catch (Exception primaryFailure) {
+                LOGGER.log(Level.WARNING, "Primary exchange-rate CDN failed; trying the provider fallback: "
+                        + primaryFailure.getMessage());
+                jsonResponse = httpClient.get(exchangeRatesFallbackUri(date));
+            }
 
-
-            return objectMapper.readTree(jsonResponse).path("usd");
+            JsonNode root = objectMapper.readTree(jsonResponse);
+            JsonNode rates = root.path("usd");
+            Map<String, Double> ratesMap = extractRatesMap(rates);
+            if (ratesMap.isEmpty()) {
+                LOGGER.log(Level.WARNING, "Exchange-rate provider returned no usable rates.");
+                return null;
+            }
+            LocalDate providerDate = root.hasNonNull("date")
+                    ? LocalDate.parse(root.path("date").asText())
+                    : date;
+            if (providerDate == null) {
+                LOGGER.log(Level.WARNING, "Exchange-rate provider response did not contain a snapshot date.");
+                return null;
+            }
+            return new ExchangeRatesSnapshot(providerDate, ratesMap);
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Could not collect currency exchange rates: " + e.getMessage());
             return null;
         }
     }
 
-    private JsonNode queryExchangeRates() {
+    private ExchangeRatesSnapshot queryExchangeRates() {
         return queryExchangeRates(null);
     }
 
     static URI exchangeRatesUri(LocalDate date) {
         String version = date == null ? "latest" : date.toString();
         return URI.create("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@" + version + "/v1/currencies/usd.json");
+    }
+
+    static URI exchangeRatesFallbackUri(LocalDate date) {
+        String version = date == null ? "latest" : date.toString();
+        return URI.create("https://" + version + ".currency-api.pages.dev/v1/currencies/usd.json");
+    }
+
+    private record ExchangeRatesSnapshot(LocalDate date, Map<String, Double> rates) {
     }
 
     private void queryBitcoinMiningData() {
